@@ -50,5 +50,7 @@ New Zealand: B2, B3
 
 Vires in Numeris!
 
+## Zero indexed
+There might be some confusion if the word list is zero or one indexed. As stated in [BIP39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki#generating-the-mnemonic):
 
-
+> bits of its SHA256 hash. This checksum is appended to the end of the initial entropy. Next, these concatenated bits are split into groups of 11 bits, each encoding a ***number from 0-2047, serving as an index into a wordlist***. Finally, we convert these numbers into words and use the joined words as a mnemonic sentence.
