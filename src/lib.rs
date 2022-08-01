@@ -2,9 +2,42 @@ mod word_list;
 use crate::word_list::WORDS;
 use rand::seq::SliceRandom;
 
-pub fn generate_random_seed(length: u8) -> Vec<&'static str> {
+// this random seed is used as the key A for the algorithm
+pub fn generate_random_seed(length: i32) -> Vec<&'static str> {
     let mut rng = &mut rand::thread_rng();
-    WORDS.choose_multiple(&mut rng, length.into()).cloned().collect()
+    WORDS
+        .choose_multiple(&mut rng, length as usize)
+        .cloned()
+        .collect()
+}
+
+pub fn get_key_b_indexes(seed_phrase_indexes: Vec<i32>, key_a_indexes: Vec<i32>) -> Vec<i32> {
+    let mut key_b_indexes = Vec::new();
+    for i in 0..seed_phrase_indexes.len() {
+        key_b_indexes.push((seed_phrase_indexes[i] - key_a_indexes[i]) % 2048);
+    }
+    key_b_indexes
+}
+
+pub fn words_to_indexes(words: Vec<&str>) -> Vec<i32> {
+    let mut indexes:Vec<i32> = Vec::new();
+    for word in words {
+        indexes.push(
+            WORDS
+                .iter()
+                .position(|x| x == &word)
+                .unwrap() as i32
+        );
+    }
+    indexes
+}
+
+pub fn indexes_to_words(indexes: Vec<i32>) -> Vec<&'static str> {
+    let mut words = Vec::new();
+    for index in indexes {
+        words.push(WORDS[index as usize]);
+    }
+    words
 }
 
 #[cfg(test)]
@@ -12,10 +45,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn valid_random_seed() {
+    fn test_random_seed_generation() {
         let random_seed: Vec<&str> = generate_random_seed(12);
         assert!(random_seed.iter().all(|word| WORDS.contains(word)));
         assert_eq!(random_seed.len(), 12);
-        assert!(!(1..random_seed.len()).any(|i| random_seed[i..].contains(&random_seed[i-1])));
+        assert!(!(1..random_seed.len()).any(|i| random_seed[i..].contains(&random_seed[i - 1])));
+    }
+
+    #[test]
+    fn test_key_b_indexes_calculation() {
+        let seed_phrase_indexes = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+        let key_a_indexes = vec![
+            2047, 2046, 2045, 2044, 2043, 2042, 2041, 2040, 2039, 2038, 2037, 2036,
+        ];
+
+        let key_b_indexes = get_key_b_indexes(seed_phrase_indexes.clone(), key_a_indexes.clone());
+
+        let mut reconstructed_seed_indexes = Vec::new();
+        for i in 0..12 {
+            reconstructed_seed_indexes.push((key_a_indexes[i] + key_b_indexes[i]) % 2048);
+        }
+
+        assert_eq!(reconstructed_seed_indexes, seed_phrase_indexes);
+    }
+
+    #[test]
+    fn test_words_to_indexes_conversion() {
+        let words = vec![
+            "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
+            "absurd", "abuse", "access", "accident",
+        ];
+        assert_eq!(
+            words_to_indexes(words),
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        )
+    }
+
+    #[test]
+    fn test_indexes_to_words_conversion() {
+        let indexes = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+        assert_eq!(
+            indexes_to_words(indexes),
+            vec![
+                "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
+                "absurd", "abuse", "access", "accident",
+            ]
+        );
     }
 }
