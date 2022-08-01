@@ -11,23 +11,18 @@ pub fn generate_random_seed(length: i32) -> Vec<&'static str> {
         .collect()
 }
 
-pub fn get_key_b_indexes(seed_phrase_indexes: Vec<i32>, key_a_indexes: Vec<i32>) -> Vec<i32> {
+pub fn calculate_key_b_indexes(seed_phrase_indexes: Vec<i32>, key_a_indexes: Vec<i32>) -> Vec<i32> {
     let mut key_b_indexes = Vec::new();
     for i in 0..seed_phrase_indexes.len() {
-        key_b_indexes.push((seed_phrase_indexes[i] - key_a_indexes[i]) % 2048);
+        key_b_indexes.push((seed_phrase_indexes[i] - key_a_indexes[i]).rem_euclid(2048));
     }
     key_b_indexes
 }
 
 pub fn words_to_indexes(words: Vec<&str>) -> Vec<i32> {
-    let mut indexes:Vec<i32> = Vec::new();
+    let mut indexes: Vec<i32> = Vec::new();
     for word in words {
-        indexes.push(
-            WORDS
-                .iter()
-                .position(|x| x == &word)
-                .unwrap() as i32
-        );
+        indexes.push(WORDS.iter().position(|x| x == &word).unwrap() as i32);
     }
     indexes
 }
@@ -38,6 +33,26 @@ pub fn indexes_to_words(indexes: Vec<i32>) -> Vec<&'static str> {
         words.push(WORDS[index as usize]);
     }
     words
+}
+
+pub fn split(seed_phrase: Vec<&str>) -> (Vec<&'static str>, Vec<&'static str>) {
+    let key_a = generate_random_seed(seed_phrase.clone().len() as i32);
+    let key_a_indexes = words_to_indexes(key_a.clone());
+    let seed_indexes = words_to_indexes(seed_phrase);
+    let key_b_indexes = calculate_key_b_indexes(seed_indexes, key_a_indexes);
+    let key_b = indexes_to_words(key_b_indexes);
+    (key_a, key_b)
+}
+
+pub fn rebuild(key_a: Vec<&str>, key_b: Vec<&str>) -> Vec<&'static str> {
+    let key_a_indexes = words_to_indexes(key_a.clone());
+    let key_b_indexes = words_to_indexes(key_b);
+    let mut reconstructed_seed_indexes = Vec::new();
+    for i in 0..key_a.len() {
+        reconstructed_seed_indexes.push((key_a_indexes[i] + key_b_indexes[i]).rem_euclid(2048));
+    }
+    let rebuilt_seed = indexes_to_words(reconstructed_seed_indexes);
+    rebuilt_seed
 }
 
 #[cfg(test)]
@@ -59,11 +74,12 @@ mod tests {
             2047, 2046, 2045, 2044, 2043, 2042, 2041, 2040, 2039, 2038, 2037, 2036,
         ];
 
-        let key_b_indexes = get_key_b_indexes(seed_phrase_indexes.clone(), key_a_indexes.clone());
+        let key_b_indexes =
+            calculate_key_b_indexes(seed_phrase_indexes.clone(), key_a_indexes.clone());
 
         let mut reconstructed_seed_indexes = Vec::new();
         for i in 0..12 {
-            reconstructed_seed_indexes.push((key_a_indexes[i] + key_b_indexes[i]) % 2048);
+            reconstructed_seed_indexes.push((key_a_indexes[i] + key_b_indexes[i]).rem_euclid(2048));
         }
 
         assert_eq!(reconstructed_seed_indexes, seed_phrase_indexes);
@@ -91,5 +107,16 @@ mod tests {
                 "absurd", "abuse", "access", "accident",
             ]
         );
+    }
+
+    #[test]
+    fn test_split_and_rebuild() {
+        let seed_phrase = vec![
+            "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
+            "absurd", "abuse", "access", "accident",
+        ];
+        let (key_a, key_b): (Vec<&str>, Vec<&str>) = split(seed_phrase.clone());
+        let rebuilt_seed: Vec<&str> = rebuild(key_a, key_b);
+        assert_eq!(seed_phrase, rebuilt_seed);
     }
 }
