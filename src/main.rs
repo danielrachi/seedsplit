@@ -1,5 +1,5 @@
-mod word_list;
-use crate::word_list::WORDS;
+use std::env;
+
 fn main() {
-    println!("Hello, world!");
+    let args: Vec<String> = env::args().collect();
 }
