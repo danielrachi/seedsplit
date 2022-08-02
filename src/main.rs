@@ -1,19 +1,38 @@
-use std::env;
-use seedsplit::{split, rebuild};
+use clap::{Parser, Subcommand};
 
+#[derive(Parser)]
+#[clap(author, version, about)]
+struct Cli {
+    /// Operation to perform
+    #[clap(subcommand)]
+    command: Subcommands,
+}
+
+#[derive(Subcommand)]
+enum Subcommands {
+    /// Splits seedphrase
+    Split {
+        /// Seedprhase to split
+        #[clap(value_parser, required(true))]
+        seedphrase: Vec<String>,
+    },
+    /// Rebuilds seedphrase from keys A and B
+    Rebuild {
+        /// Key A to rebuild seedphrase
+        #[clap(value_parser, required(true))]
+        key_a: Vec<String>,
+        /// Key B to rebuild seedphrase
+        #[clap(value_parser, required(true), last(true))]
+        key_b: Vec<String>,
+    },
+}
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let words:Vec<&str> = args[2..].iter().map(|x| x.as_str()).collect();
-    if args[1] == "split".to_string() {
-        let seed_phrase = words;
-        let (key_a, key_b) = split(seed_phrase);
-        println!("key A: {:?}", key_a);
-        println!("key B: {:?}", key_b);
-    } else {
-        let mut keys = words.split(|x| x as &str == "+" as &str);
-        let key_a = keys.next().unwrap().to_vec();
-        let key_b = keys.next().unwrap().to_vec();
-        let seedphrase = rebuild(key_a, key_b);
-        println!("seedphrase: {:?}", seedphrase);
+    let cli = Cli::parse();
+    match cli.command {
+        Subcommands::Split { seedphrase } => println!("{:?}", seedphrase),
+        Subcommands::Rebuild { key_a, key_b } => {
+            println!("key a: {:?}", key_a);
+            println!("key b: {:?}", key_b);
+        }
     }
 }
