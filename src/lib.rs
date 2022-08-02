@@ -1,6 +1,37 @@
 mod word_list;
 use crate::word_list::WORDS;
+use clap::{Parser, Subcommand};
 use rand::seq::SliceRandom;
+
+pub fn run(cli: Cli) {
+}
+
+#[derive(Parser)]
+#[clap(author, version, about)]
+pub struct Cli {
+    /// Operation to perform
+    #[clap(subcommand)]
+    pub command: Subcommands,
+}
+
+#[derive(Subcommand)]
+pub enum Subcommands {
+    /// Splits seedphrase
+    Split {
+        /// Seedprhase to split
+        #[clap(value_parser, required(true))]
+        seedphrase: Vec<String>,
+    },
+    /// Rebuilds seedphrase from keys A and B
+    Rebuild {
+        /// Key A to rebuild seedphrase
+        #[clap(value_parser, required(true))]
+        key_a: Vec<String>,
+        /// Key B to rebuild seedphrase
+        #[clap(value_parser, required(true), last(true))]
+        key_b: Vec<String>,
+    },
+}
 
 // this random seed is used as the key A for the algorithm
 pub fn generate_random_seed(length: i32) -> Vec<&'static str> {
@@ -11,10 +42,10 @@ pub fn generate_random_seed(length: i32) -> Vec<&'static str> {
         .collect()
 }
 
-pub fn calculate_key_b_indexes(seed_phrase_indexes: Vec<i32>, key_a_indexes: Vec<i32>) -> Vec<i32> {
+pub fn calculate_key_b_indexes(seedphrase_indexes: Vec<i32>, key_a_indexes: Vec<i32>) -> Vec<i32> {
     let mut key_b_indexes = Vec::new();
-    for i in 0..seed_phrase_indexes.len() {
-        key_b_indexes.push((seed_phrase_indexes[i] - key_a_indexes[i]).rem_euclid(2048));
+    for i in 0..seedphrase_indexes.len() {
+        key_b_indexes.push((seedphrase_indexes[i] - key_a_indexes[i]).rem_euclid(2048));
     }
     key_b_indexes
 }
@@ -35,10 +66,10 @@ pub fn indexes_to_words(indexes: Vec<i32>) -> Vec<&'static str> {
     words
 }
 
-pub fn split(seed_phrase: Vec<&str>) -> (Vec<&'static str>, Vec<&'static str>) {
-    let key_a = generate_random_seed(seed_phrase.clone().len() as i32);
+pub fn split(seedphrase: Vec<&str>) -> (Vec<&'static str>, Vec<&'static str>) {
+    let key_a = generate_random_seed(seedphrase.clone().len() as i32);
     let key_a_indexes = words_to_indexes(key_a.clone());
-    let seed_indexes = words_to_indexes(seed_phrase);
+    let seed_indexes = words_to_indexes(seedphrase);
     let key_b_indexes = calculate_key_b_indexes(seed_indexes, key_a_indexes);
     let key_b = indexes_to_words(key_b_indexes);
     (key_a, key_b)
@@ -69,20 +100,20 @@ mod tests {
 
     #[test]
     fn test_key_b_indexes_calculation() {
-        let seed_phrase_indexes = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+        let seedphrase_indexes = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
         let key_a_indexes = vec![
             2047, 2046, 2045, 2044, 2043, 2042, 2041, 2040, 2039, 2038, 2037, 2036,
         ];
 
         let key_b_indexes =
-            calculate_key_b_indexes(seed_phrase_indexes.clone(), key_a_indexes.clone());
+            calculate_key_b_indexes(seedphrase_indexes.clone(), key_a_indexes.clone());
 
         let mut reconstructed_seed_indexes = Vec::new();
         for i in 0..12 {
             reconstructed_seed_indexes.push((key_a_indexes[i] + key_b_indexes[i]).rem_euclid(2048));
         }
 
-        assert_eq!(reconstructed_seed_indexes, seed_phrase_indexes);
+        assert_eq!(reconstructed_seed_indexes, seedphrase_indexes);
     }
 
     #[test]
@@ -111,12 +142,12 @@ mod tests {
 
     #[test]
     fn test_split_and_rebuild() {
-        let seed_phrase = vec![
+        let seedphrase = vec![
             "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract",
             "absurd", "abuse", "access", "accident",
         ];
-        let (key_a, key_b): (Vec<&str>, Vec<&str>) = split(seed_phrase.clone());
+        let (key_a, key_b): (Vec<&str>, Vec<&str>) = split(seedphrase.clone());
         let rebuilt_seed: Vec<&str> = rebuild(key_a, key_b);
-        assert_eq!(seed_phrase, rebuilt_seed);
+        assert_eq!(seedphrase, rebuilt_seed);
     }
 }
