@@ -1,9 +1,27 @@
 mod word_list;
+use std::process;
 use crate::word_list::WORDS;
+use anyhow::Context;
 use clap::{Parser, Subcommand};
 use rand::seq::SliceRandom;
 
-pub fn run(cli: Cli) {
+pub fn run(cli: Cli) -> Result<(), anyhow::Error> {
+    match cli.command {
+        Subcommands::Split { seedphrase } => {
+            let seedphrase: Vec<&str> = seedphrase.iter().map(|s| &**s).collect();
+            for i in 1..4 {
+                let (key_a, key_b) = split(seedphrase.clone())?;
+                println!("A{}: {:?} B{}: {:?}", i, key_a, i, key_b);
+            }
+            Ok(())
+        }
+        Subcommands::Rebuild { key_a, key_b } => {
+            let key_a: Vec<&str> = key_a.iter().map(|s| &**s).collect();
+            let key_b: Vec<&str> = key_b.iter().map(|s| &**s).collect();
+            println!("Seedphrase: {:?}", rebuild(key_a, key_b)?);
+            Ok(())
+        }
+    }
 }
 
 #[derive(Parser)]
@@ -50,12 +68,18 @@ pub fn calculate_key_b_indexes(seedphrase_indexes: Vec<i32>, key_a_indexes: Vec<
     key_b_indexes
 }
 
-pub fn words_to_indexes(words: Vec<&str>) -> Vec<i32> {
+pub fn words_to_indexes(words: Vec<&str>) -> Result<Vec<i32>, anyhow::Error> {
     let mut indexes: Vec<i32> = Vec::new();
     for word in words {
-        indexes.push(WORDS.iter().position(|x| x == &word).unwrap() as i32);
+        indexes.push(
+            WORDS
+                .iter()
+                .position(|x| x == &word)
+                .context(format!("Word '{}' is not on the BIP39 wordlist", word))?
+                as i32,
+        );
     }
-    indexes
+    Ok(indexes)
 }
 
 pub fn indexes_to_words(indexes: Vec<i32>) -> Vec<&'static str> {
@@ -66,24 +90,30 @@ pub fn indexes_to_words(indexes: Vec<i32>) -> Vec<&'static str> {
     words
 }
 
-pub fn split(seedphrase: Vec<&str>) -> (Vec<&'static str>, Vec<&'static str>) {
+pub fn split(
+    seedphrase: Vec<&str>,
+) -> Result<(Vec<&'static str>, Vec<&'static str>), anyhow::Error> {
     let key_a = generate_random_seed(seedphrase.clone().len() as i32);
-    let key_a_indexes = words_to_indexes(key_a.clone());
-    let seed_indexes = words_to_indexes(seedphrase);
+    let key_a_indexes = words_to_indexes(key_a.clone())?;
+    let seed_indexes = words_to_indexes(seedphrase).context("Invalid word on seedphrase")?;
     let key_b_indexes = calculate_key_b_indexes(seed_indexes, key_a_indexes);
     let key_b = indexes_to_words(key_b_indexes);
-    (key_a, key_b)
+    Ok((key_a, key_b))
 }
 
-pub fn rebuild(key_a: Vec<&str>, key_b: Vec<&str>) -> Vec<&'static str> {
-    let key_a_indexes = words_to_indexes(key_a.clone());
-    let key_b_indexes = words_to_indexes(key_b);
-    let mut reconstructed_seed_indexes = Vec::new();
-    for i in 0..key_a.len() {
-        reconstructed_seed_indexes.push((key_a_indexes[i] + key_b_indexes[i]).rem_euclid(2048));
+pub fn rebuild(key_a: Vec<&str>, key_b: Vec<&str>) -> Result<Vec<&'static str>, anyhow::Error> {
+    if key_a.len() != key_b.len() {
+        eprintln!("Error: Both keys must have the same number of words. Key A has {} words and key B has {}.", key_a.len(), key_b.len());
+        process::exit(0);
     }
-    let rebuilt_seed = indexes_to_words(reconstructed_seed_indexes);
-    rebuilt_seed
+    let key_a_indexes = words_to_indexes(key_a.clone()).context("Invalid word on key A")?;
+    let key_b_indexes = words_to_indexes(key_b).context("Invalid word on key B")?;
+    let mut rebuilt_seed_indexes = Vec::new();
+    for i in 0..key_a.len() {
+        rebuilt_seed_indexes.push((key_a_indexes[i] + key_b_indexes[i]).rem_euclid(2048));
+    }
+    let rebuilt_seed = indexes_to_words(rebuilt_seed_indexes);
+    Ok(rebuilt_seed)
 }
 
 #[cfg(test)]
@@ -108,12 +138,12 @@ mod tests {
         let key_b_indexes =
             calculate_key_b_indexes(seedphrase_indexes.clone(), key_a_indexes.clone());
 
-        let mut reconstructed_seed_indexes = Vec::new();
+        let mut rebuilt_seed_indexes = Vec::new();
         for i in 0..12 {
-            reconstructed_seed_indexes.push((key_a_indexes[i] + key_b_indexes[i]).rem_euclid(2048));
+            rebuilt_seed_indexes.push((key_a_indexes[i] + key_b_indexes[i]).rem_euclid(2048));
         }
 
-        assert_eq!(reconstructed_seed_indexes, seedphrase_indexes);
+        assert_eq!(rebuilt_seed_indexes, seedphrase_indexes);
     }
 
     #[test]

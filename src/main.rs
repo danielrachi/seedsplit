@@ -1,7 +1,8 @@
 use clap::Parser;
-use seedsplit::{run, Cli};
+use seedsplit::Cli;
 
-fn main() {
+fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
-    run(cli);
+    seedsplit::run(cli)?;
+    Ok(())
 }
