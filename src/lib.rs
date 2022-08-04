@@ -1,24 +1,33 @@
 mod word_list;
-use std::process;
 use crate::word_list::WORDS;
-use anyhow::Context;
-use clap::{Parser, Subcommand};
+use clap::{builder::PossibleValuesParser, Parser, Subcommand};
 use rand::seq::SliceRandom;
+use std::io::{Error, ErrorKind};
 
-pub fn run(cli: Cli) -> Result<(), anyhow::Error> {
+pub fn run(cli: Cli) -> Result<(), Error> {
     match cli.command {
         Subcommands::Split { seedphrase } => {
             let seedphrase: Vec<&str> = seedphrase.iter().map(|s| &**s).collect();
             for i in 1..4 {
-                let (key_a, key_b) = split(seedphrase.clone())?;
+                let (key_a, key_b) = split(seedphrase.clone());
                 println!("A{}: {:?} B{}: {:?}", i, key_a, i, key_b);
             }
             Ok(())
         }
         Subcommands::Rebuild { key_a, key_b } => {
+            if key_a.len() != key_b.len() {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    format!(
+                        "Keys must have the same number of words. Key A has {} words and key B has {} words.",
+                        key_a.len(),
+                        key_b.len()
+                    ),
+                ));
+            }
             let key_a: Vec<&str> = key_a.iter().map(|s| &**s).collect();
             let key_b: Vec<&str> = key_b.iter().map(|s| &**s).collect();
-            println!("Seedphrase: {:?}", rebuild(key_a, key_b)?);
+            println!("Seedphrase: {:?}", rebuild(key_a, key_b));
             Ok(())
         }
     }
@@ -36,17 +45,23 @@ pub struct Cli {
 pub enum Subcommands {
     /// Splits seedphrase
     Split {
-        /// Seedprhase to split
-        #[clap(value_parser, required(true))]
+        /// Seedprhase to split. Seedphrase must have min 12 and max 24 words.
+        #[clap(value_parser = PossibleValuesParser::new(WORDS),
+            required(true),
+            min_values(12), max_values(24))]
         seedphrase: Vec<String>,
     },
-    /// Rebuilds seedphrase from keys A and B
+    /// Rebuilds seedphrase from keys A and B. Keys must have the same number of words.
     Rebuild {
         /// Key A to rebuild seedphrase
-        #[clap(value_parser, required(true))]
+        #[clap(value_parser = PossibleValuesParser::new(WORDS),
+            required(true),
+            min_values(12), max_values(24))]
         key_a: Vec<String>,
         /// Key B to rebuild seedphrase
-        #[clap(value_parser, required(true), last(true))]
+        #[clap(value_parser = PossibleValuesParser::new(WORDS),
+            required(true), last(true),
+            min_values(12), max_values(24))]
         key_b: Vec<String>,
     },
 }
@@ -68,18 +83,12 @@ pub fn calculate_key_b_indexes(seedphrase_indexes: Vec<i32>, key_a_indexes: Vec<
     key_b_indexes
 }
 
-pub fn words_to_indexes(words: Vec<&str>) -> Result<Vec<i32>, anyhow::Error> {
+pub fn words_to_indexes(words: Vec<&str>) -> Vec<i32> {
     let mut indexes: Vec<i32> = Vec::new();
     for word in words {
-        indexes.push(
-            WORDS
-                .iter()
-                .position(|x| x == &word)
-                .context(format!("Word '{}' is not on the BIP39 wordlist", word))?
-                as i32,
-        );
+        indexes.push(WORDS.iter().position(|x| x == &word).unwrap() as i32);
     }
-    Ok(indexes)
+    indexes
 }
 
 pub fn indexes_to_words(indexes: Vec<i32>) -> Vec<&'static str> {
@@ -90,30 +99,23 @@ pub fn indexes_to_words(indexes: Vec<i32>) -> Vec<&'static str> {
     words
 }
 
-pub fn split(
-    seedphrase: Vec<&str>,
-) -> Result<(Vec<&'static str>, Vec<&'static str>), anyhow::Error> {
+pub fn split(seedphrase: Vec<&str>) -> (Vec<&'static str>, Vec<&'static str>) {
     let key_a = generate_random_seed(seedphrase.clone().len() as i32);
-    let key_a_indexes = words_to_indexes(key_a.clone())?;
-    let seed_indexes = words_to_indexes(seedphrase).context("Invalid word on seedphrase")?;
+    let key_a_indexes = words_to_indexes(key_a.clone());
+    let seed_indexes = words_to_indexes(seedphrase);
     let key_b_indexes = calculate_key_b_indexes(seed_indexes, key_a_indexes);
     let key_b = indexes_to_words(key_b_indexes);
-    Ok((key_a, key_b))
+    (key_a, key_b)
 }
 
-pub fn rebuild(key_a: Vec<&str>, key_b: Vec<&str>) -> Result<Vec<&'static str>, anyhow::Error> {
-    if key_a.len() != key_b.len() {
-        eprintln!("Error: Both keys must have the same number of words. Key A has {} words and key B has {}.", key_a.len(), key_b.len());
-        process::exit(0);
-    }
-    let key_a_indexes = words_to_indexes(key_a.clone()).context("Invalid word on key A")?;
-    let key_b_indexes = words_to_indexes(key_b).context("Invalid word on key B")?;
+pub fn rebuild(key_a: Vec<&str>, key_b: Vec<&str>) -> Vec<&'static str> {
+    let key_a_indexes = words_to_indexes(key_a.clone());
+    let key_b_indexes = words_to_indexes(key_b);
     let mut rebuilt_seed_indexes = Vec::new();
     for i in 0..key_a.len() {
         rebuilt_seed_indexes.push((key_a_indexes[i] + key_b_indexes[i]).rem_euclid(2048));
     }
-    let rebuilt_seed = indexes_to_words(rebuilt_seed_indexes);
-    Ok(rebuilt_seed)
+    indexes_to_words(rebuilt_seed_indexes)
 }
 
 #[cfg(test)]

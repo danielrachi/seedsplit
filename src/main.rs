@@ -1,8 +1,10 @@
 use clap::Parser;
 use seedsplit::Cli;
 
-fn main() -> Result<(), anyhow::Error> {
+fn main() {
     let cli = Cli::parse();
-    seedsplit::run(cli)?;
-    Ok(())
+    let ans = seedsplit::run(cli);
+    if let Err(e) = ans {
+        eprintln!("Error: {}", e);
+    }
 }
