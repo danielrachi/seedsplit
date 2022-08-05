@@ -1,20 +1,46 @@
 mod word_list;
 use crate::word_list::WORDS;
-use clap::{builder::PossibleValuesParser, Parser, Subcommand};
+use clap::{Parser, Subcommand};
+use levenshtein::levenshtein;
 use rand::seq::SliceRandom;
 use std::io::{Error, ErrorKind};
+use std::cmp::Ordering;
+use std::collections::HashSet;
+use std::hash::Hash;
 
 pub fn run(cli: Cli) -> Result<(), Error> {
     match cli.command {
         Subcommands::Split { seedphrase } => {
+            if !has_unique_elements(seedphrase.clone()) {
+                println!("\x1b[93mWarning: \x1b[0m Found repeated words. Verify that all the provided words are correct.");
+            }
+            check_words_in_wordlist(seedphrase.clone())?;
             let seedphrase: Vec<&str> = seedphrase.iter().map(|s| &**s).collect();
+            println!("\n---------------------------------------------------------------------");
             for i in 1..4 {
                 let (key_a, key_b) = split(seedphrase.clone());
-                println!("A{}: {:?} B{}: {:?}", i, key_a, i, key_b);
+                print!("\x1b[32mA{}:\x1b[0m ", i);
+                for word in key_a {
+                    print!("{} ", word);
+                }
+                println!();
+                print!("\x1b[92mB{}:\x1b[0m ", i);
+                for word in key_b {
+                    print!("{} ", word);
+                }
+                println!("\n---------------------------------------------------------------------");
             }
             Ok(())
         }
         Subcommands::Rebuild { key_a, key_b } => {
+            if !has_unique_elements(key_a.clone()) {
+                println!("\x1b[93mWarning: \x1b[0m Found repeated words. Verify that all the provided words are correct.");
+            }
+            if !has_unique_elements(key_b.clone()) {
+                println!("\x1b[93mWarning: \x1b[0m Found repeated words. Verify that all the provided words are correct.");
+            }
+            check_words_in_wordlist(key_a.clone())?;
+            check_words_in_wordlist(key_b.clone())?;
             if key_a.len() != key_b.len() {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
@@ -25,9 +51,14 @@ pub fn run(cli: Cli) -> Result<(), Error> {
                     ),
                 ));
             }
+            println!("\n---------------------------------------------------------------------");
             let key_a: Vec<&str> = key_a.iter().map(|s| &**s).collect();
             let key_b: Vec<&str> = key_b.iter().map(|s| &**s).collect();
-            println!("Seedphrase: {:?}", rebuild(key_a, key_b));
+            print!("\x1b[32mSeedprhase:\x1b[0m");
+            for word in rebuild(key_a, key_b) {
+                print!("{} ", word);
+            }
+            println!("\n---------------------------------------------------------------------");
             Ok(())
         }
     }
@@ -46,28 +77,62 @@ pub enum Subcommands {
     /// Splits seedphrase
     Split {
         /// Seedprhase to split. Seedphrase must have min 12 and max 24 words.
-        #[clap(value_parser = PossibleValuesParser::new(WORDS),
-            required(true),
-            min_values(12), max_values(24))]
+        #[clap(value_parser, required(true), min_values(12), max_values(24))]
         seedphrase: Vec<String>,
     },
     /// Rebuilds seedphrase from keys A and B. Keys must have the same number of words.
     Rebuild {
         /// Key A to rebuild seedphrase
-        #[clap(value_parser = PossibleValuesParser::new(WORDS),
-            required(true),
-            min_values(12), max_values(24))]
+        #[clap(value_parser, required(true), min_values(12), max_values(24))]
         key_a: Vec<String>,
         /// Key B to rebuild seedphrase
-        #[clap(value_parser = PossibleValuesParser::new(WORDS),
-            required(true), last(true),
-            min_values(12), max_values(24))]
+        #[clap(
+            value_parser,
+            required(true),
+            last(true),
+            min_values(12),
+            max_values(24)
+        )]
         key_b: Vec<String>,
     },
 }
 
+fn has_unique_elements<T>(iter: T) -> bool
+where
+    T: IntoIterator,
+    T::Item: Eq + Hash,
+{
+    let mut uniq = HashSet::new();
+    iter.into_iter().all(move |x| uniq.insert(x))
+}
+
+fn get_most_similar_word(word: &str, dictionary: [&str; 2048]) -> &'static str {
+    let levenshtein_distances = dictionary.iter().map(|x| levenshtein(word, x));
+    let closest_word_index = levenshtein_distances
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+        .map(|(index, _)| index).unwrap();
+    WORDS[closest_word_index]
+}
+
+fn check_words_in_wordlist(words: Vec<String>) -> Result<(), Error> {
+    for word in words {
+        if !WORDS.contains(&word.as_str()) {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!(
+                    "Word '{}' is not in the BIP39 wordlist. Did you mean:'\x1b[32m{}\x1b[0m'?",
+                    word,
+                    get_most_similar_word(&word, WORDS)
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 // this random seed is used as the key A for the algorithm
-pub fn generate_random_seed(length: i32) -> Vec<&'static str> {
+fn generate_random_seed(length: i32) -> Vec<&'static str> {
     let mut rng = &mut rand::thread_rng();
     WORDS
         .choose_multiple(&mut rng, length as usize)
@@ -75,7 +140,7 @@ pub fn generate_random_seed(length: i32) -> Vec<&'static str> {
         .collect()
 }
 
-pub fn calculate_key_b_indexes(seedphrase_indexes: Vec<i32>, key_a_indexes: Vec<i32>) -> Vec<i32> {
+fn calculate_key_b_indexes(seedphrase_indexes: Vec<i32>, key_a_indexes: Vec<i32>) -> Vec<i32> {
     let mut key_b_indexes = Vec::new();
     for i in 0..seedphrase_indexes.len() {
         key_b_indexes.push((seedphrase_indexes[i] - key_a_indexes[i]).rem_euclid(2048));
@@ -83,7 +148,7 @@ pub fn calculate_key_b_indexes(seedphrase_indexes: Vec<i32>, key_a_indexes: Vec<
     key_b_indexes
 }
 
-pub fn words_to_indexes(words: Vec<&str>) -> Vec<i32> {
+fn words_to_indexes(words: Vec<&str>) -> Vec<i32> {
     let mut indexes: Vec<i32> = Vec::new();
     for word in words {
         indexes.push(WORDS.iter().position(|x| x == &word).unwrap() as i32);
@@ -91,7 +156,7 @@ pub fn words_to_indexes(words: Vec<&str>) -> Vec<i32> {
     indexes
 }
 
-pub fn indexes_to_words(indexes: Vec<i32>) -> Vec<&'static str> {
+fn indexes_to_words(indexes: Vec<i32>) -> Vec<&'static str> {
     let mut words = Vec::new();
     for index in indexes {
         words.push(WORDS[index as usize]);
@@ -181,5 +246,44 @@ mod tests {
         let (key_a, key_b): (Vec<&str>, Vec<&str>) = split(seedphrase.clone());
         let rebuilt_seed: Vec<&str> = rebuild(key_a, key_b);
         assert_eq!(seedphrase, rebuilt_seed);
+    }
+
+    #[test]
+    fn all_words_in_wordlist() {
+        let input = vec![
+            "abandon".to_string(),
+            "ability".to_string(),
+            "able".to_string(),
+            "about".to_string(),
+            "above".to_string(),
+            "absent".to_string(),
+            "absorb".to_string(),
+            "abstract".to_string(),
+            "absurd".to_string(),
+            "abuse".to_string(),
+            "access".to_string(),
+            "accident".to_string(),
+        ];
+        assert_eq!(check_words_in_wordlist(input).unwrap(), ())
+    }
+
+    #[test]
+    #[should_panic]
+    fn some_words_not_in_wordlist() {
+        let input = vec![
+            "a".to_string(),
+            "ability".to_string(),
+            "able".to_string(),
+            "b".to_string(),
+            "above".to_string(),
+            "absent".to_string(),
+            "absorb".to_string(),
+            "abstract".to_string(),
+            "d".to_string(),
+            "abuse".to_string(),
+            "access".to_string(),
+            "accident".to_string(),
+        ];
+        check_words_in_wordlist(input).unwrap();
     }
 }

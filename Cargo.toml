@@ -9,3 +9,4 @@ edition = "2021"
 [dependencies]
 rand = "0.8.5"
 clap = { version = "3.0", features = ["derive"] }
+levenshtein = "1.0.5"
