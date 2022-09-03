@@ -118,19 +118,14 @@ fn calculate_key_b_indexes(seedphrase_indexes: Vec<i32>, key_a_indexes: Vec<i32>
 }
 
 fn words_to_indexes(words: Vec<&str>) -> Vec<i32> {
-    let mut indexes: Vec<i32> = Vec::new();
-    for word in words {
-        indexes.push(WORDS.iter().position(|x| x == &word).unwrap() as i32);
-    }
-    indexes
+    words
+        .iter()
+        .map(|word| WORDS.iter().position(|x| x == word).unwrap() as i32)
+        .collect()
 }
 
 fn indexes_to_words(indexes: Vec<i32>) -> Vec<&'static str> {
-    let mut words = Vec::new();
-    for index in indexes {
-        words.push(WORDS[index as usize]);
-    }
-    words
+    indexes.iter().map(|index| WORDS[*index as usize]).collect()
 }
 
 pub fn split(seedphrase: Vec<&str>) -> (Vec<&'static str>, Vec<&'static str>) {
